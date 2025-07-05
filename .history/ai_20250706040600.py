@@ -142,8 +142,8 @@ def train():
 import time
 if __name__ == "__main__":
 
-    while True:
-        train()  # runs training until early stop or keyboard interrupt
-        print("⏸️ Taking a 5-minute break to chill the VPS...")
-        time.sleep(5 * 60)  # 5 minutes
+while True:
+    train()  # runs training until early stop or keyboard interrupt
+    print("⏸️ Taking a 5-minute break to chill the VPS...")
+    time.sleep(5 * 60)  # 5 minutes
 
