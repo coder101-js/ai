@@ -1,12 +1,24 @@
+import os
+import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import time
+
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
-# 🧠 Neural Net with dropout for VPS stress test
+# ─── CPU TUNING ───────────────────────────────────────────────────────────────
+# Use all available vCPUs for linear algebra
+import multiprocessing
+num_cpus = multiprocessing.cpu_count()
+os.environ["OMP_NUM_THREADS"] = str(num_cpus)
+os.environ["MKL_NUM_THREADS"] = str(num_cpus)
+torch.set_num_threads(num_cpus)
+torch.set_num_interop_threads(num_cpus)
+print(f"🔧 Using {num_cpus} CPU threads for training")
+
+# ─── MODEL DEFINITION ─────────────────────────────────────────────────────────
 class QuadSolverNN(nn.Module):
     def __init__(self):
         super().__init__()
@@ -19,56 +31,86 @@ class QuadSolverNN(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(64, 2)
         )
+
     def forward(self, x):
         return self.net(x)
 
-# 🧪 Generate synthetic quadratic data
+# Compile for graph-mode speedups (PyTorch 2.0+)
+try:
+    QuadSolverNN = torch.compile(QuadSolverNN)
+    print("⚡ Successfully compiled the model with torch.compile()")
+except Exception:
+    print("⚠️ torch.compile() not available, running in eager mode")
+
+# ─── DATA GENERATION ──────────────────────────────────────────────────────────
 def generate_data(n):
-    a_vals = np.random.uniform(1, 10, n)
-    b_vals = np.random.uniform(-20, 20, n)
-    c_vals = np.random.uniform(-50, 50, n)
+    a = np.random.uniform(1, 10, n)
+    b = np.random.uniform(-20, 20, n)
+    c = np.random.uniform(-50, 50, n)
     data, labels = [], []
-    for a, b, c in zip(a_vals, b_vals, c_vals):
-        disc = b**2 - 4*a*c
+    for ai, bi, ci in zip(a, b, c):
+        disc = bi**2 - 4*ai*ci
         if disc < 0: continue
-        x1 = (-b + np.sqrt(disc)) / (2*a)
-        x2 = (-b - np.sqrt(disc)) / (2*a)
-        data.append([a/10, b/20, c/50])  # Normalize input
+        x1 = (-bi + np.sqrt(disc)) / (2*ai)
+        x2 = (-bi - np.sqrt(disc)) / (2*ai)
+        data.append([ai/10, bi/20, ci/50])
         labels.append(sorted([x1, x2]))
     return torch.tensor(data, dtype=torch.float32), torch.tensor(labels, dtype=torch.float32)
 
-# 🏋️ Training loop
+# ─── TRAINING LOOP ────────────────────────────────────────────────────────────
 def train():
-    # ⚙️ Configs
-    total_samples = 250_000     # 🔥 max out VPS
-    batch_size    = 2048
+    # Config
+    total_samples = 300_000      # bump it up
+    batch_size    = 2048         # fits in ~4GB RAM
+    lr            = 1e-3
     max_epochs    = 500
-    max_bad       = 5
-    lr            = 0.001
+    max_bad       = 5            # early stop patience
 
+    # Model / Optim / Scheduler
     model     = QuadSolverNN()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor=0.5, verbose=True)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+                                                    patience=3,
+                                                    factor=0.5,
+                                                    verbose=True)
 
-    # 📦 Load data
+    # Data
     print("🔄 Generating data...")
     X, y = generate_data(total_samples)
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1, random_state=42)
-    train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader   = DataLoader(TensorDataset(X_val,   y_val),   batch_size=batch_size, shuffle=False, num_workers=2)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.1, random_state=42)
 
-    print(f"🚀 Training starting with {len(X_train)} train samples and {len(X_val)} val samples")
-    best_loss = float('inf')
-    bad_epochs = 0
+    train_ds = TensorDataset(X_train, y_train)
+    val_ds   = TensorDataset(X_val,   y_val)
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_cpus,
+        pin_memory=True,
+        persistent_workers=True
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_cpus,
+        pin_memory=True,
+        persistent_workers=True
+    )
+
+    print(f"🚀 Training on {len(X_train)} samples, validating on {len(X_val)} samples")
+    best_loss, bad_epochs = float('inf'), 0
 
     try:
-        for epoch in range(1, max_epochs + 1):
-            start = time.time()
+        for epoch in range(1, max_epochs+1):
+            t0 = time.time()
 
-            # 🎓 Train
+            # — Train —
             model.train()
-            train_loss = 0
+            train_loss = 0.0
             for xb, yb in train_loader:
                 optimizer.zero_grad()
                 out = model(xb)
@@ -78,20 +120,22 @@ def train():
                 train_loss += loss.item() * xb.size(0)
             train_loss /= len(train_loader.dataset)
 
-            # 🧪 Validate
+            # — Validate —
             model.eval()
-            val_loss = 0
+            val_loss = 0.0
             with torch.no_grad():
                 for xb, yb in val_loader:
                     val_loss += criterion(model(xb), yb).item() * xb.size(0)
             val_loss /= len(val_loader.dataset)
 
+            # LR scheduler
             scheduler.step(val_loss)
 
-            duration = time.time() - start
-            print(f"🧠 Epoch {epoch:03d} | Train: {train_loss:.6f} | Val: {val_loss:.6f} | Time: {duration:.2f}s")
+            # Log
+            dt = time.time() - t0
+            print(f"🧠 Epoch {epoch:03d} | Train: {train_loss:.6f} | Val: {val_loss:.6f} | Time: {dt:.2f}s")
 
-            # 🧠 Save best model
+            # Checkpoint & Early Stop
             if val_loss < best_loss:
                 best_loss = val_loss
                 bad_epochs = 0
@@ -99,14 +143,13 @@ def train():
             else:
                 bad_epochs += 1
                 if bad_epochs >= max_bad:
-                    print(f"🛑 Early stop at epoch {epoch} — no improvement for {bad_epochs} epochs.")
+                    print(f"🛑 Early stopping at epoch {epoch}, no improvement for {bad_epochs} epochs.")
                     break
 
     except KeyboardInterrupt:
-        # 💾 Emergency save
-        print("⚠️ Training interrupted! Saving emergency model...")
+        print("\n⚠️  Interrupted! Saving emergency checkpoint...")
         torch.save(model.state_dict(), "quad_solver_emergency.pth")
-        print("✅ Saved as quad_solver_emergency.pth")
+        print("💾  Saved as quad_solver_emergency.pth — you’re safe fam.")
 
 if __name__ == "__main__":
     train()
