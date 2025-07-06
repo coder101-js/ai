@@ -182,20 +182,37 @@ def train(max_minutes=30):
         }, "quad_solver_emergency.pth")
         print("💾 Emergency checkpoint saved as quad_solver_emergency.pth")
 
-def evaluate_model(model, n_samples=5):
+def evaluate_model(n_samples=5, model_path="quad_solver_best.pth"):
+    print("\n📊 Evaluating the best model on fresh examples...\n")
+    model = QuadSolverNN()
+    checkpoint = torch.load(model_path)
+    model.load_state_dict(checkpoint['model_state'])
     model.eval()
-    X_test, y_real = generate_data(n_samples)
-    with torch.no_grad():
-        y_pred = model(X_test)
-    for i in range(n_samples):
-        a = X_test[i][0].item() * 10
-        b = X_test[i][1].item() * 20
-        c = X_test[i][2].item() * 50
-        print(f"🧪 Eq: {a:.2f}x² + {b:.2f}x + {c:.2f} = 0")
-        print(f"✅ Real: {y_real[i].tolist()}")
-        print(f"🤖 Pred: {y_pred[i].tolist()}")
-        print("-" * 40)
 
+    # Generate test data
+    a = np.random.uniform(1, 10, n_samples)
+    b = np.random.uniform(-20, 20, n_samples)
+    c = np.random.uniform(-50, 50, n_samples)
+
+    for ai, bi, ci in zip(a, b, c):
+        disc = bi**2 - 4 * ai * ci
+        if disc < 0:
+            continue  # skip imaginary roots
+
+        x1 = (-bi + np.sqrt(disc)) / (2 * ai)
+        x2 = (-bi - np.sqrt(disc)) / (2 * ai)
+        real_roots = sorted([x1, x2])
+
+        # Normalize input same as training
+        x = torch.tensor([[ai / 10, bi / 20, ci / 50]], dtype=torch.float32)
+        with torch.no_grad():
+            pred = model(x).squeeze().tolist()
+        pred = sorted(pred)
+
+        print(f"🧪 Eq: {ai:.2f}x² + {bi:.2f}x + {ci:.2f} = 0")
+        print(f"✅ Real: {real_roots}")
+        print(f"🤖 Pred: {pred}")
+        print("-" * 40)
 
 
 if __name__ == "__main__":

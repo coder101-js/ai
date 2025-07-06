@@ -155,11 +155,6 @@ def train(max_minutes=30):
                     'val_loss': val_loss
                 }, "quad_solver_best.pth")
                 print(f"💾 New best model saved at epoch {epoch} with val_loss {val_loss:.6f}")
-                
-                # 🔍 Evaluate the newly saved best model right away
-                print("🎯 Evaluating best model on fresh samples...")
-                evaluate_model(model, n_samples=5)
-
 
             else:
                 bad_epochs += 1
@@ -182,25 +177,8 @@ def train(max_minutes=30):
         }, "quad_solver_emergency.pth")
         print("💾 Emergency checkpoint saved as quad_solver_emergency.pth")
 
-def evaluate_model(model, n_samples=5):
-    model.eval()
-    X_test, y_real = generate_data(n_samples)
-    with torch.no_grad():
-        y_pred = model(X_test)
-    for i in range(n_samples):
-        a = X_test[i][0].item() * 10
-        b = X_test[i][1].item() * 20
-        c = X_test[i][2].item() * 50
-        print(f"🧪 Eq: {a:.2f}x² + {b:.2f}x + {c:.2f} = 0")
-        print(f"✅ Real: {y_real[i].tolist()}")
-        print(f"🤖 Pred: {y_pred[i].tolist()}")
-        print("-" * 40)
-
-
-
 if __name__ == "__main__":
     while True:
         train(max_minutes=30)
-        evaluate_model(n_samples=5)  # 👈 NEW!
         print("⏸️ Taking a 5-minute break to chill the VPS...")
         time.sleep(5 * 60)
