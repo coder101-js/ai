@@ -9,16 +9,15 @@ class QuadraticSolverModel(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(3, 128),   # net.0
             nn.ReLU(),           # net.1
-            nn.Dropout(0.1),     # net.2 (no weights)
-            nn.Linear(128, 64),  # net.3 ✅
-            nn.ReLU(),           # net.4
-            nn.Dropout(0.1),     # net.5 (no weights)
-            nn.Linear(64, 2)     # net.6 ✅
+            nn.Linear(128, 64),  # net.2
+            nn.ReLU(),           # net.3
+            nn.Linear(64, 32),   # net.4
+            nn.ReLU(),           # net.5
+            nn.Linear(32, 2)     # net.6 ✅
         )
 
     def forward(self, x):
         return self.net(x)
-
 
 
 # 💾 Load your saved model
@@ -33,7 +32,7 @@ def load_model(path="quad_solver_best.pth"):
 
 
 # 🧪 Predict roots using the model
-def predict_roots(model, a, b, c):
+ddef predict_roots(model, a, b, c):
     # Normalize using same scales as in training
     a_norm = a / 10.0
     b_norm = b / 20.0
@@ -54,7 +53,7 @@ if __name__ == "__main__":
     model = load_model()
 
     # 🎯 Example equation: 2x² + 5x - 3 = 0
-    a, b, c = 1.0, -2.0, 10.0
+    a, b, c = 2.0, 5.0, -3.0
     predicted = predict_roots(model, a, b, c)
     actual = real_roots(a, b, c)
 

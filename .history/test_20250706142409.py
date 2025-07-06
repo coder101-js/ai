@@ -54,7 +54,7 @@ if __name__ == "__main__":
     model = load_model()
 
     # 🎯 Example equation: 2x² + 5x - 3 = 0
-    a, b, c = 1.0, -2.0, 10.0
+    a, b, c = 5.0, 8.0, 1.0
     predicted = predict_roots(model, a, b, c)
     actual = real_roots(a, b, c)
 

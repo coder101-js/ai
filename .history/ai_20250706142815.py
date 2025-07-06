@@ -65,22 +65,20 @@ def train(max_minutes=30):
     best_loss = float('inf')
 
     # 🧬 Resume emergency checkpoint if exists
-    # 🧬 Resume from best model if it exists
-    if os.path.exists("quad_solver_best.pth"):
+    if os.path.exists("quad_solver_emergency.pth"):
         try:
-            checkpoint = torch.load("quad_solver_best.pth")
+            checkpoint = torch.load("quad_solver_emergency.pth")
             model.load_state_dict(checkpoint['model_state'])
             optimizer.load_state_dict(checkpoint['optimizer_state'])
             if 'scheduler_state' in checkpoint:
                 scheduler.load_state_dict(checkpoint['scheduler_state'])
             start_epoch = checkpoint.get('epoch', 1)
             best_loss = checkpoint.get('val_loss', float('inf'))
-            print(f"🏁 Resumed from BEST checkpoint at epoch {start_epoch}, val_loss {best_loss:.6f}")
+            print(f"🆘 Resumed from emergency checkpoint at epoch {start_epoch}, val_loss {best_loss:.6f}")
         except Exception as e:
-            print(f"⚠️ Failed to load best checkpoint: {e}")
+            print(f"⚠️ Failed to load emergency checkpoint: {e}")
     else:
-        print("🚫 No best checkpoint found. Starting from scratch.")
-
+        print("🚫 No emergency checkpoint found. Starting from scratch.")
 
     # Dataset setup
     total_samples = 4_500_000

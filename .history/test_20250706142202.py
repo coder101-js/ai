@@ -35,9 +35,10 @@ def load_model(path="quad_solver_best.pth"):
 # 🧪 Predict roots using the model
 def predict_roots(model, a, b, c):
     # Normalize using same scales as in training
-    a_norm = a / 10.0
-    b_norm = b / 20.0
-    c_norm = c / 50.0
+    a /= 10.0
+    b /= 20.0
+        c /= 50.0
+
 
     input_tensor = torch.tensor([[a_norm, b_norm, c_norm]], dtype=torch.float32)
     with torch.no_grad():
@@ -54,7 +55,7 @@ if __name__ == "__main__":
     model = load_model()
 
     # 🎯 Example equation: 2x² + 5x - 3 = 0
-    a, b, c = 1.0, -2.0, 10.0
+    a, b, c = 2.0, 5.0, -3.0
     predicted = predict_roots(model, a, b, c)
     actual = real_roots(a, b, c)
 
