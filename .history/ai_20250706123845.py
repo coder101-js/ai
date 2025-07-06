@@ -64,21 +64,17 @@ def train(max_minutes=30):
     start_epoch = 1
     best_loss = float('inf')
 
-    # 🧬 Resume emergency checkpoint if exists
+    # Resume checkpoint
     if os.path.exists("quad_solver_emergency.pth"):
         try:
-            checkpoint = torch.load("quad_solver_emergency.pth")
+            checkpoint = torch.load("quad_solver_latest.pth")
             model.load_state_dict(checkpoint['model_state'])
             optimizer.load_state_dict(checkpoint['optimizer_state'])
-            if 'scheduler_state' in checkpoint:
-                scheduler.load_state_dict(checkpoint['scheduler_state'])
             start_epoch = checkpoint.get('epoch', 1)
             best_loss = checkpoint.get('val_loss', float('inf'))
-            print(f"🆘 Resumed from emergency checkpoint at epoch {start_epoch}, val_loss {best_loss:.6f}")
-        except Exception as e:
-            print(f"⚠️ Failed to load emergency checkpoint: {e}")
-    else:
-        print("🚫 No emergency checkpoint found. Starting from scratch.")
+            print(f"✅ Resumed from epoch {start_epoch}, val_loss {best_loss:.6f}")
+        except:
+            print("⚠️ Could not load latest checkpoint. Starting fresh.")
 
     # Dataset setup
     total_samples = 4_500_000
@@ -135,12 +131,11 @@ def train(max_minutes=30):
 
             print(f"🧠 Epoch {epoch:04d} | Train: {train_loss:.6f} | Val: {val_loss:.6f} | LR: {current_lr:.2e} | Time: {dt:.2f}s")
 
-            # Save latest checkpoint
+            # Save latest checkpoint with metadata
             torch.save({
                 'epoch': epoch,
                 'model_state': model.state_dict(),
                 'optimizer_state': optimizer.state_dict(),
-                'scheduler_state': scheduler.state_dict(),
                 'val_loss': val_loss
             }, "quad_solver_latest.pth")
 
@@ -151,7 +146,6 @@ def train(max_minutes=30):
                     'epoch': epoch,
                     'model_state': model.state_dict(),
                     'optimizer_state': optimizer.state_dict(),
-                    'scheduler_state': scheduler.state_dict(),
                     'val_loss': val_loss
                 }, "quad_solver_best.pth")
             else:
@@ -166,13 +160,7 @@ def train(max_minutes=30):
 
     except KeyboardInterrupt:
         print("\n⚠️ Training interrupted. Saving emergency checkpoint...")
-        torch.save({
-            'epoch': epoch,
-            'model_state': model.state_dict(),
-            'optimizer_state': optimizer.state_dict(),
-            'scheduler_state': scheduler.state_dict(),
-            'val_loss': val_loss
-        }, "quad_solver_emergency.pth")
+        torch.save(model.state_dict(), "quad_solver_emergency.pth")
         print("💾 Emergency checkpoint saved as quad_solver_emergency.pth")
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ class QuadSolverNN(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+# Optional torch.compile (PyTorch 2+)
 try:
     QuadSolverNN = torch.compile(QuadSolverNN)
     print("⚡ Model compiled with torch.compile()")
@@ -59,33 +60,20 @@ def train(max_minutes=30):
     model = QuadSolverNN()
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5, verbose=True)
 
-    start_epoch = 1
-    best_loss = float('inf')
-
-    # 🧬 Resume emergency checkpoint if exists
-    if os.path.exists("quad_solver_emergency.pth"):
+    # Resume if checkpoint exists
+    if os.path.exists("quad_solver_latest.pth"):
         try:
-            checkpoint = torch.load("quad_solver_emergency.pth")
-            model.load_state_dict(checkpoint['model_state'])
-            optimizer.load_state_dict(checkpoint['optimizer_state'])
-            if 'scheduler_state' in checkpoint:
-                scheduler.load_state_dict(checkpoint['scheduler_state'])
-            start_epoch = checkpoint.get('epoch', 1)
-            best_loss = checkpoint.get('val_loss', float('inf'))
-            print(f"🆘 Resumed from emergency checkpoint at epoch {start_epoch}, val_loss {best_loss:.6f}")
-        except Exception as e:
-            print(f"⚠️ Failed to load emergency checkpoint: {e}")
-    else:
-        print("🚫 No emergency checkpoint found. Starting from scratch.")
+            model.load_state_dict(torch.load("quad_solver_latest.pth"))
+            print("✅ Resumed from latest checkpoint.")
+        except:
+            print("⚠️ Could not load latest checkpoint. Starting fresh.")
 
     # Dataset setup
-    total_samples = 4_500_000
+    total_samples = 4_500_000  # big dataset for hours of training
     batch_size = 2048
     max_epochs = 2000
     patience = 10
-    bad_epochs = 0
 
     print("🧪 Generating data...")
     X, y = generate_data(total_samples)
@@ -103,11 +91,14 @@ def train(max_minutes=30):
                             num_workers=2,
                             pin_memory=True)
 
+    best_loss = float('inf')
+    bad_epochs = 0
     start_time = time.time()
 
     try:
-        for epoch in range(start_epoch, max_epochs + 1):
+        for epoch in range(1, max_epochs + 1):
             epoch_start = time.time()
+
             model.train()
             train_loss = 0.0
 
@@ -127,53 +118,33 @@ def train(max_minutes=30):
                     val_loss += criterion(model(xb), yb).item() * xb.size(0)
             val_loss /= len(val_loader.dataset)
 
-            scheduler.step(val_loss)
-
             dt = time.time() - epoch_start
             total_elapsed = time.time() - start_time
-            current_lr = optimizer.param_groups[0]['lr']
 
-            print(f"🧠 Epoch {epoch:04d} | Train: {train_loss:.6f} | Val: {val_loss:.6f} | LR: {current_lr:.2e} | Time: {dt:.2f}s")
+            print(f"🧠 Epoch {epoch:04d} | Train: {train_loss:.6f} | Val: {val_loss:.6f} | Time: {dt:.2f}s")
 
-            # Save latest checkpoint
-            torch.save({
-                'epoch': epoch,
-                'model_state': model.state_dict(),
-                'optimizer_state': optimizer.state_dict(),
-                'scheduler_state': scheduler.state_dict(),
-                'val_loss': val_loss
-            }, "quad_solver_latest.pth")
+            # Save latest checkpoint every epoch
+            torch.save(model.state_dict(), "quad_solver_latest.pth")
 
             if val_loss < best_loss:
                 best_loss = val_loss
                 bad_epochs = 0
-                torch.save({
-                    'epoch': epoch,
-                    'model_state': model.state_dict(),
-                    'optimizer_state': optimizer.state_dict(),
-                    'scheduler_state': scheduler.state_dict(),
-                    'val_loss': val_loss
-                }, "quad_solver_best.pth")
+                torch.save(model.state_dict(), "quad_solver_best.pth")
             else:
                 bad_epochs += 1
                 if bad_epochs >= patience:
                     print(f"🛑 Early stopping at epoch {epoch}")
                     break
 
+            # Force stop after max_minutes
             if total_elapsed > max_minutes * 60:
                 print(f"⏰ Stopping training after {max_minutes} minutes this session.")
                 break
 
     except KeyboardInterrupt:
-        print("\n⚠️ Training interrupted. Saving emergency checkpoint...")
-        torch.save({
-            'epoch': epoch,
-            'model_state': model.state_dict(),
-            'optimizer_state': optimizer.state_dict(),
-            'scheduler_state': scheduler.state_dict(),
-            'val_loss': val_loss
-        }, "quad_solver_emergency.pth")
-        print("💾 Emergency checkpoint saved as quad_solver_emergency.pth")
+        print("\n⚠️ Training interrupted by user. Saving emergency checkpoint...")
+        torch.save(model.state_dict(), "quad_solver_emergency.pth")
+        print("💾 Saved as quad_solver_emergency.pth — you’re safe fam.")
 
 if __name__ == "__main__":
     while True:
