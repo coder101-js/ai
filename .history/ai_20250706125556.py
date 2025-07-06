@@ -145,16 +145,16 @@ def train(max_minutes=30):
             }, "quad_solver_latest.pth")
 
             if val_loss < best_loss:
-                best_loss = val_loss
-                bad_epochs = 0
-                torch.save({
-                    'epoch': epoch,
-                    'model_state': model.state_dict(),
-                    'optimizer_state': optimizer.state_dict(),
-                    'scheduler_state': scheduler.state_dict(),
-                    'val_loss': val_loss
-                }, "quad_solver_best.pth")
-                print(f"💾 New best model saved at epoch {epoch} with val_loss {val_loss:.6f}")
+    best_loss = val_loss
+    bad_epochs = 0
+    torch.save({
+        'epoch': epoch,
+        'model_state': model.state_dict(),
+        'optimizer_state': optimizer.state_dict(),
+        'scheduler_state': scheduler.state_dict(),
+        'val_loss': val_loss
+    }, "quad_solver_best.pth")
+    print(f"💾 New best model saved at epoch {epoch} with val_loss {val_loss:.6f}")
 
             else:
                 bad_epochs += 1
